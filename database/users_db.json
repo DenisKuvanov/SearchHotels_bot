@@ -1,0 +1,24 @@
+{
+    "199090726": {
+        "state": "1",
+        "username": "In_valiDen",
+        "order": "PRICE",
+        "destination_id": "2702",
+        "destination_name": "Осло, Норвегия",
+        "date_in": "16.12.2022",
+        "date_out": "22.12.2022",
+        "number_of_hotels": "6",
+        "number_of_photo": "10"
+    },
+    "1053912383": {
+        "state": "0",
+        "username": "ablznk",
+        "order": "PRICE",
+        "destination_id": "1069",
+        "destination_name": "Дублин, Ирландия",
+        "date_in": "16.12.2022",
+        "date_out": "20.12.2022",
+        "number_of_hotels": "3",
+        "number_of_photo": "5"
+    }
+}
