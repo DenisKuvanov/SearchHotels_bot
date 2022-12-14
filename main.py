@@ -192,21 +192,24 @@ def search_hotels(message: Message):
     chat_id = message.chat.id
     wait_msg = bot.send_message(chat_id=message.chat.id, text=phrase('wait'))
     parameters = get_user_info(message=message, all=True)
-    hotels = get_hotels(message=message, parameters=parameters)
-    logger.info(f'Function {get_hotels.__name__} returned: {hotels}')
-    bot.delete_message(chat_id=chat_id, message_id=wait_msg.id)
-    if not hotels or len(hotels) < 1:
-        bot.send_message(chat_id=chat_id, text=phrase(key='hotels_not_found'))
-    else:
-        for hotel in hotels:
-            text = f"Название отеля: {hotel['name']}\nРасстояние до центра: {hotel['distance_from_centre']}\nЦена за сутки: {hotel['price_per_night']}\n" \
-                   f"Общая сумма: {hotel['total_price']}\nURL адрес отеля: {hotel['url']}"
-            msg = bot.send_message(message.from_user.id, text)
-            photos = []
-            for photo in hotel['images']:
-                photos.append(InputMediaPhoto(photo))
-            if photos:
-                bot.send_media_group(chat_id=message.from_user.id, media=photos)
+    try:
+        hotels = get_hotels(message=message, parameters=parameters)
+        logger.info(f'Function {get_hotels.__name__} returned: {hotels}')
+        bot.delete_message(chat_id=chat_id, message_id=wait_msg.id)
+        if not hotels or len(hotels) < 1:
+            bot.send_message(chat_id=chat_id, text=phrase(key='hotels_not_found'))
+        else:
+            for hotel in hotels:
+                text = f"Название отеля: {hotel['name']}\nРасстояние до центра: {hotel['distance_from_centre']}\nЦена за сутки: {hotel['price_per_night']}\n" \
+                       f"Общая сумма: {hotel['total_price']}\nURL адрес отеля: {hotel['url']}"
+                msg = bot.send_message(message.from_user.id, text)
+                photos = []
+                for photo in hotel['images']:
+                    photos.append(InputMediaPhoto(photo))
+                if photos:
+                    bot.send_media_group(chat_id=message.from_user.id, media=photos)
+    except Exception as ex:
+        bot.send_message(chat_id=chat_id, text='Ошибка сервера. Повторите запрос позже')
 
 
 
