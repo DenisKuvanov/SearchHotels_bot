@@ -40,7 +40,7 @@ def search_city(message: Message) -> Dict[str, str]:
         "q": city,
         "locale": "ru_RU"
     }
-
+    logger.info(f'function {search_city.__name__} called with parameters {city}')
     cities_id = dict()
     try:
         response = requests.get(url, headers=headers, params=querystring).json()

@@ -5,6 +5,7 @@ import json
 
 from telebot.types import Message
 from loguru import logger
+from redis_db import redis_db
 
 from utils.bot_messages import vocabulary
 
@@ -42,17 +43,8 @@ def add_user(message: Message) -> None:
     """
     logger.info(f'function "{add_user.__name__}" called')
     user_chat_id = str(message.chat.id)
-    datebase = dict()
-
-    if path.exists(path=path_to_database):
-        with open(path_to_database, 'r', encoding='utf-8') as db:
-            datebase = json.load(db)
-    datebase[user_chat_id] = {
-        'state': '0',
-        'username': message.chat.username
-    }
-    with open(path_to_database, 'w', encoding='utf-8') as db:
-        json.dump(datebase, db, indent=4, ensure_ascii=False)
+    redis_db.hset(user_chat_id, 'state', 0)
+    redis_db.hset(user_chat_id, 'username', message.chat.username)
 
 
 def is_input_correct(message: Message) -> bool:
@@ -61,9 +53,13 @@ def is_input_correct(message: Message) -> bool:
     :param message: Message
     :return: True, если параметр введён корректно
     """
-    state = get_user_info(key='state', message=message)
+    chat_id = message.chat.id
+    state = redis_db.hget(chat_id, 'state')
     msg = message.text.strip()
-    if state in ['5', '6'] and msg.strip().isdigit() and 0 < int(msg.strip()) <= 10:
+    logger.info(f'function {is_input_correct.__name__} called')
+    if state == '6' and msg.strip().isdigit() and 0 <= int(msg.strip()) <= 10:
+        return True
+    elif state == '5' and msg.strip().isdigit() and 0 < int(msg.strip()) <= 10:
         return True
     elif state == '2' and is_date_correct(msg):
         return True
@@ -100,62 +96,57 @@ def is_user_in_db(message: Message) -> bool:
     """
     logger.info(f'function "{is_user_in_db.__name__}" called')
     user_chat_id = str(message.chat.id)
-    try:
-        with open(path_to_database, 'r', encoding='utf-8') as db:
-            datebase = json.load(db)
-            if user_chat_id in datebase:
-                return True
-            return False
-    except Exception as ex:
-        return False
+    if redis_db.hget(user_chat_id, 'state'):
+        return True
+    return False
 
 
-def get_user_info(message: Message, key: str = None, all: bool = None) -> str:
-    """
-    Возвращает  информацию о пользователе из базы данных по ключу key
-    :param all: bool
-    :param key: str
-    :param message: Message
-    :return: str
-    """
-    logger.info(f'function "{is_user_in_db.__name__}" called with parameter {key}')
-    if not is_user_in_db(message):
-        add_user(message)
-    user_chat_id = str(message.chat.id)
-    try:
-        with open(path_to_database, 'r', encoding='utf-8') as db:
-            datebase = json.load(db)
-            if all:
-                return datebase[user_chat_id]
-            else:
-                return datebase[user_chat_id][key]
-    except Exception as ex:
-        if key == 'state':
-            return '0'
-        elif key == 'order':
-            return ''
+# def get_user_info(message: Message, key: str = None, all: bool = None) -> str:
+#     """
+#     Возвращает  информацию о пользователе из базы данных по ключу key
+#     :param all: bool
+#     :param key: str
+#     :param message: Message
+#     :return: str
+#     """
+#     logger.info(f'function "{is_user_in_db.__name__}" called with parameter {key}')
+#     if not is_user_in_db(message):
+#         add_user(message)
+#     user_chat_id = str(message.chat.id)
+#     try:
+#         with open(path_to_database, 'r', encoding='utf-8') as db:
+#             datebase = json.load(db)
+#             if all:
+#                 return datebase[user_chat_id]
+#             else:
+#                 return datebase[user_chat_id][key]
+#     except Exception as ex:
+#         if key == 'state':
+#             return '0'
+#         elif key == 'order':
+#             return ''
 
 
-def set_user_info(key:str, value: str, message: Message, increase: bool = False) -> None:
-    """
-    Устанавливает для пользователя переданное значение состояния
-    :param key: str
-    :param value: str
-    :param message: Message
-    :return: None
-    """
-    logger.info(f'function "{is_user_in_db.__name__}"called with parameter {key}')
-    if not is_user_in_db(message):
-        add_user(message)
-    user_chat_id = str(message.chat.id)
-    with open(path_to_database, 'r', encoding='utf-8') as db:
-        datebase = json.load(db)
-    if increase and key=='state':
-        datebase[user_chat_id][key] = str(int(datebase[user_chat_id][key]) + int(value))
-    else:
-        datebase[user_chat_id][key] = value
-    with open(path_to_database, 'w', encoding='utf-8') as db:
-        json.dump(datebase, db, indent=4, ensure_ascii=False)
+# def set_user_info(key:str, value: str, message: Message, increase: bool = False) -> None:
+#     """
+#     Устанавливает для пользователя переданное значение состояния
+#     :param key: str
+#     :param value: str
+#     :param message: Message
+#     :return: None
+#     """
+#     logger.info(f'function "{is_user_in_db.__name__}"called with parameter {key}')
+#     if not is_user_in_db(message):
+#         add_user(message)
+#     user_chat_id = str(message.chat.id)
+#     with open(path_to_database, 'r', encoding='utf-8') as db:
+#         datebase = json.load(db)
+#     if increase and key=='state':
+#         datebase[user_chat_id][key] = str(int(datebase[user_chat_id][key]) + int(value))
+#     else:
+#         datebase[user_chat_id][key] = value
+#     with open(path_to_database, 'w', encoding='utf-8') as db:
+#         json.dump(datebase, db, indent=4, ensure_ascii=False)
 
 
 def make_message(message: Message, prefix: str) -> str:
@@ -166,7 +157,7 @@ def make_message(message: Message, prefix: str) -> str:
     :param prefix: префикс для поиска нужного сообщения в словаре
     :return: str
     """
-    state = get_user_info(key='state', message=message)
+    state = redis_db.hget(message.chat.id, 'state')
     msg = phrase(prefix + state)
 
     return msg

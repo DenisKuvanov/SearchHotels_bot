@@ -2,9 +2,10 @@ import telebot
 from telebot.types import Message, CallbackQuery, InputMediaPhoto
 from loguru import logger
 from utils.instruments import is_user_in_db, logger_config, add_user, phrase, \
-    get_user_info, set_user_info, make_message, is_input_correct
+    make_message, is_input_correct
 from hotels_API.locations import search_city, get_name_location
 from hotels_API.hotels import get_hotels
+from redis_db import redis_db
 
 
 logger.configure(**logger_config)
@@ -42,9 +43,10 @@ def get_commands(message: Message) -> None:
     logger.info("\n" + "*" * 100 + "\n")
     if not is_user_in_db(message=message):
         add_user(message=message)
-    set_user_info(key='state', value='1', message=message)
+    user_chat_id = message.chat.id
+    redis_db.hset(user_chat_id, 'state', 1)
     if 'lowprice' in message.text:
-        set_user_info(key='order', value='PRICE', message=message)
+        redis_db.hset(user_chat_id, 'order', 'PRICE')
         logger.info('"lowprice" command is called')
     elif '/highprice' in message.text:
         bot.send_message(chat_id=message.chat.id,
@@ -65,8 +67,8 @@ def get_commands(message: Message) -> None:
         # set_user_info(key='order', value='HISTORY', message=message)
         # logger.info('"history" command is called')
 
-    logger.info(get_user_info(key='order', message=message))
-    state = get_user_info(key='state', message=message)
+    logger.info(redis_db.hget(user_chat_id, 'order'))
+    state = redis_db.hget(user_chat_id, 'state')
     logger.info(f"Current state: {state}")
     bot.send_message(chat_id=message.chat.id, text=make_message(message, 'question_'))
 
@@ -80,7 +82,7 @@ def get_text_message(message: Message) -> None:
     """
     if not is_user_in_db(message=message):
         add_user(message=message)
-    state = get_user_info(key='state', message=message)
+    state = redis_db.hget(message.chat.id, 'state')
     if state == '1':
         get_location(message)
     elif state in ['2', '3', '4', '5', '6']:
@@ -91,7 +93,7 @@ def get_text_message(message: Message) -> None:
 
 def get_location(message: Message) -> None:
     """
-    Получает название города, ищет чере API hotels совпадения и отправляет их в
+    Получает название города, ищет через API hotels совпадения и отправляет их в
     чат
     :param message: Message
     :return: None
@@ -131,13 +133,15 @@ def callback_worker(call: CallbackQuery) -> None:
     bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id)
 
     if call.data.startswith('code'):
-        if get_user_info(key='state', message=call.message) != '1':
+        if redis_db.hget(chat_id, 'state') != '1':
             bot.send_message(call.message.chat.id, text=phrase('enter_command'))
-            set_user_info(key='state', value='0', message=call.message)
+            redis_db.hset(chat_id, 'state', 0)
         else:
             city_name = get_name_location(call.message.json, call.data)
-            set_user_info(key='destination_id', value=call.data[4:], message=call.message)
-            set_user_info(key='destination_name', value=city_name, message=call.message)
+            redis_db.hset(chat_id, mapping={
+                'destination_id': call.data[4:],
+                'destination_name': city_name
+            })
             logger.info(f"{city_name} selected")
             bot.send_message(
                 chat_id=chat_id,
@@ -147,51 +151,60 @@ def callback_worker(call: CallbackQuery) -> None:
             #     set_user_info(key='state', value='1', message=call.message, increase=True)
             # else:
             #     set_user_info(key='state', value='2', message=call.message, increase=True)
-            set_user_info(key='state', value='1', message=call.message,
-                          increase=True)
+            # set_user_info(key='state', value='1', message=call.message,
+            #               increase=True)
+            redis_db.hincrby(chat_id, 'state', 1)
             bot.send_message(chat_id=chat_id, text=make_message(call.message, 'question_'))
 
     if call.data == 'cancel':
         logger.info(f'Canceled by user')
-        set_user_info(key='state', value='0', message=call.message)
+        redis_db.hset(chat_id, 'state', 0)
         bot.send_message(chat_id, 'Отменено')
 
 
 def get_search_parameters(message: Message) -> None:
     """
-    Получает и запоминает параметры поиска от пользователя
+    Получает и сохраняет параметры поиска от пользователя в базу данных
     :param message: Message
     :return: None
     """
     logger.info(f'Function {get_search_parameters.__name__} called with argument: {message}')
     chat_id = message.chat.id
-    state = get_user_info(key='state', message=message)
+    state = redis_db.hget(chat_id, 'state')
     if not is_input_correct(message=message):
         bot.send_message(chat_id=chat_id, text=make_message(message, 'mistake_'))
     else:
-        set_user_info(key='state', value='1', increase=True, message=message)
+        redis_db.hincrby(chat_id, 'state', 1)
         if state == '2':
             date_in, date_out = message.text.replace(' ', '').split('-')
-            set_user_info(key='date_in', value=date_in, message=message)
-            set_user_info(key='date_out', value=date_out, message=message)
-            if get_user_info(key='order', message=message) == 'PRICE':
-                set_user_info(key='state', value='2', message=message, increase=True)
+            redis_db.hset(chat_id, mapping={
+                'date_in': date_in,
+                'date_out': date_out
+            })
+            logger.info(f'set date_in={date_in}, date_out={date_out}')
+            if redis_db.hget(chat_id, 'order') == 'PRICE':
+                redis_db.hincrby(chat_id, 'state', 2)
+            # тут будут условия проверки выбранной команды
             bot.send_message(chat_id=chat_id, text=make_message(message, 'question_'))
         elif state == '5':
             number_of_hotels = message.text.strip()
-            set_user_info(key='number_of_hotels', value=number_of_hotels, message=message)
+            redis_db.hset(chat_id, 'number_of_hotels', number_of_hotels)
+            logger.info(f'set number_of_hotels={number_of_hotels}')
             bot.send_message(chat_id=chat_id, text=make_message(message, 'question_'))
         elif state == '6':
             number_of_photo = message.text.strip()
-            set_user_info(key='number_of_photo', value=number_of_photo, message=message)
-            set_user_info(key='state', value='0', message=message)
+            redis_db.hset(chat_id, mapping={
+                'number_of_photo': number_of_photo,
+                'state': 0
+            })
+            logger.info(f'set number_of_photo={number_of_photo}, state=0')
             search_hotels(message=message)
 
 
 def search_hotels(message: Message):
     chat_id = message.chat.id
     wait_msg = bot.send_message(chat_id=message.chat.id, text=phrase('wait'))
-    parameters = get_user_info(message=message, all=True)
+    parameters = redis_db.hgetall(message.chat.id)
     try:
         hotels = get_hotels(message=message, parameters=parameters)
         logger.info(f'Function {get_hotels.__name__} returned: {hotels}')
@@ -210,8 +223,6 @@ def search_hotels(message: Message):
                     bot.send_media_group(chat_id=message.from_user.id, media=photos)
     except Exception as ex:
         bot.send_message(chat_id=chat_id, text='Ошибка сервера. Повторите запрос позже')
-
-
 
 
 
