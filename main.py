@@ -46,14 +46,11 @@ def get_commands(message: Message) -> None:
     user_chat_id = message.chat.id
     redis_db.hset(user_chat_id, 'state', 1)
     if 'lowprice' in message.text:
-        redis_db.hset(user_chat_id, 'order', 'PRICE')
+        redis_db.hset(user_chat_id, 'order', 'PRICE_LOW_TO_HIGH')
         logger.info('"lowprice" command is called')
     elif '/highprice' in message.text:
-        bot.send_message(chat_id=message.chat.id,
-                         text='Команда highprice пока в разработке')
-        #дорабоать
-        # set_user_info(key='order', value='PRICE_HIGHT_TO_LOW', message=message)
-        # logger.info('"highprice" command is called')
+        redis_db.hset(user_chat_id, 'order', 'RECOMMENDED')
+        logger.info('"highprice" command is called')
     elif '/bestdeal' in message.text:
         bot.send_message(chat_id=message.chat.id,
                          text='Команда bestdeal пока в разработке')
@@ -182,7 +179,7 @@ def get_search_parameters(message: Message) -> None:
                 'date_out': date_out
             })
             logger.info(f'set date_in={date_in}, date_out={date_out}')
-            if redis_db.hget(chat_id, 'order') == 'PRICE':
+            if redis_db.hget(chat_id, 'order') in ['PRICE_LOW_TO_HIGH', 'RECOMMENDED']:
                 redis_db.hincrby(chat_id, 'state', 2)
             # тут будут условия проверки выбранной команды
             bot.send_message(chat_id=chat_id, text=make_message(message, 'question_'))
@@ -223,6 +220,8 @@ def search_hotels(message: Message):
                     bot.send_media_group(chat_id=message.from_user.id, media=photos)
     except Exception as ex:
         bot.send_message(chat_id=chat_id, text='Ошибка сервера. Повторите запрос позже')
+        print(ex)
+
 
 
 

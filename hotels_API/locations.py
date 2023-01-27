@@ -3,7 +3,7 @@ from typing import List, Dict
 from telebot.types import Message
 from loguru import logger
 
-X_RAPIDAPI_KEY = "cfcdca8e7cmshdea121d9cb1595fp19d74cjsn19805112f7c8"
+X_RAPIDAPI_KEY = "e32598b809mshaacc28f4e9bf7ccp19a25ejsn955e64105d2e"
 
 
 def get_name_location(data: dict, loc_id: str) -> str:

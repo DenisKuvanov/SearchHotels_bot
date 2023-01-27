@@ -3,7 +3,7 @@ from typing import List, Dict, Tuple
 from telebot.types import Message
 from loguru import logger
 
-X_RAPIDAPI_KEY = "cfcdca8e7cmshdea121d9cb1595fp19d74cjsn19805112f7c8"
+X_RAPIDAPI_KEY = "e32598b809mshaacc28f4e9bf7ccp19a25ejsn955e64105d2e"
 
 
 def get_hotels(message: Message, parameters: dict) -> [dict, None]:
@@ -14,13 +14,14 @@ def get_hotels(message: Message, parameters: dict) -> [dict, None]:
     :return:
     """
     url = "https://hotels4.p.rapidapi.com/properties/v2/list"
+    sort_hotels = parameters['order']
     location_id = parameters['destination_id']
     day_in, month_in, year_in = sep_date(parameters['date_in'])
     day_out, month_out, year_out = sep_date(parameters['date_out'])
     hotels_amount = int(parameters['number_of_hotels'])
     images_amount = int(parameters['number_of_photo'])
-    min_price, max_price = 1, 900
-    if parameters['order'] != 'PRICE':
+    min_price, max_price = 1, 2000
+    if parameters['order'] not in ['PRICE_LOW_TO_HIGH', 'RECOMMENDED']:
         min_price, max_price = int(parameters['min_price']), int(parameters['max_price'])
 
     payload = {
@@ -46,8 +47,8 @@ def get_hotels(message: Message, parameters: dict) -> [dict, None]:
             }
         ],
         "resultsStartingIndex": 0,
-        "resultsSize": hotels_amount,
-        "sort": "PRICE_LOW_TO_HIGH",
+        "resultsSize": 200,
+        "sort": sort_hotels,
         "filters": {"price": {
             "max": max_price,
             "min": min_price
@@ -60,7 +61,7 @@ def get_hotels(message: Message, parameters: dict) -> [dict, None]:
     }
 
     response = requests.post(url, json=payload, headers=headers).json()
-    hotels_lst = []
+    all_hotels_lst = []
     for i_hotel in response['data']['propertySearch']['properties']:
         hotel = {
             'id': i_hotel['id'],
@@ -73,10 +74,17 @@ def get_hotels(message: Message, parameters: dict) -> [dict, None]:
                     'value'].replace('total', ''),
             'url': 'https://www.hotels.com/h{}.Hotel-Information'.format(
                 i_hotel['id']),
-            'images': get_images(hotel_id=i_hotel['id'], images_amount=images_amount)
+            # 'images': get_images(hotel_id=i_hotel['id'], images_amount=images_amount)
 
         }
-        hotels_lst.append(hotel)
+        all_hotels_lst.append(hotel)
+
+    if sort_hotels == 'RECOMMENDED':
+        all_hotels_lst.sort(key=lambda elem: float(elem['price_per_night'][1:].replace(',', '.')), reverse=True)
+    hotels_lst = all_hotels_lst[:hotels_amount]
+    for hotel in hotels_lst:
+        # данный цикл для уменьшения количества запросов к серверу
+        hotel['images'] = get_images(hotel_id=hotel['id'], images_amount=images_amount)
 
     return hotels_lst
 
@@ -105,6 +113,9 @@ def get_images(hotel_id: str, images_amount: int) -> List[str]:
         "X-RapidAPI-Key": X_RAPIDAPI_KEY,
         "X-RapidAPI-Host": "hotels4.p.rapidapi.com"
     }
+
+    if images_amount == 0:
+        return []
 
     response = requests.request("POST", url, json=payload, headers=headers).json()
     images_lst = []
