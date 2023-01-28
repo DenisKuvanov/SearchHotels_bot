@@ -61,10 +61,30 @@ def is_input_correct(message: Message) -> bool:
         return True
     elif state == '5' and msg.strip().isdigit() and 0 < int(msg.strip()) <= 10:
         return True
+    elif state == '4' and msg.strip().isdigit() and int(msg.strip()) > 0:
+        return True
+    elif state == '3' and is_price_correct(msg):
+        return True
     elif state == '2' and is_date_correct(msg):
         return True
     elif state == '1' and msg.replace(' ', '').replace('-', '').isalpha():
         return True
+
+
+def is_price_correct(price: str) -> bool:
+    """
+    Проверяет корректность введёной максимальной и минимальной суммы
+    :param price:
+    :return:
+    """
+    if not price.replace(' ', '').replace('-', '').isdigit():
+        return False
+    min_price, max_price = list(map(lambda elem: int(elem), price.replace(' ', '').split('-')))
+    if min_price < 1 or max_price < 1:
+        return False
+    if min_price >= max_price:
+        return False
+    return True
 
 
 def is_date_correct(date: str) -> bool:

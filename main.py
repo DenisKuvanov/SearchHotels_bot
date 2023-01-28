@@ -52,11 +52,8 @@ def get_commands(message: Message) -> None:
         redis_db.hset(user_chat_id, 'order', 'RECOMMENDED')
         logger.info('"highprice" command is called')
     elif '/bestdeal' in message.text:
-        bot.send_message(chat_id=message.chat.id,
-                         text='Команда bestdeal пока в разработке')
-        #дорабоать
-        # set_user_info(key='order', value='DISTANCE_FROM_CENTRE', message=message)
-        # logger.info('"bestdeal" command is called')
+        redis_db.hset(user_chat_id, 'order', 'DISTANCE')
+        logger.info('"bestdeal" command is called')
     else:
         bot.send_message(chat_id=message.chat.id,
                          text='Команда history пока в разработке')
@@ -144,12 +141,6 @@ def callback_worker(call: CallbackQuery) -> None:
                 chat_id=chat_id,
                 text=f'{phrase(key="loc_selected")}: <b>{city_name}</b>'
             )
-            # if get_user_info(key='order', message=call.message) == 'DISTANCE_FROM_CENTRE':
-            #     set_user_info(key='state', value='1', message=call.message, increase=True)
-            # else:
-            #     set_user_info(key='state', value='2', message=call.message, increase=True)
-            # set_user_info(key='state', value='1', message=call.message,
-            #               increase=True)
             redis_db.hincrby(chat_id, 'state', 1)
             bot.send_message(chat_id=chat_id, text=make_message(call.message, 'question_'))
 
@@ -179,10 +170,26 @@ def get_search_parameters(message: Message) -> None:
                 'date_out': date_out
             })
             logger.info(f'set date_in={date_in}, date_out={date_out}')
-            if redis_db.hget(chat_id, 'order') in ['PRICE_LOW_TO_HIGH', 'RECOMMENDED']:
+            if redis_db.hget(chat_id, 'order') == 'PRICE_LOW_TO_HIGH':
                 redis_db.hincrby(chat_id, 'state', 2)
-            # тут будут условия проверки выбранной команды
+            elif redis_db.hget(chat_id, 'order') == 'RECOMMENDED':
+                redis_db.hincrby(chat_id, 'state', 1)
             bot.send_message(chat_id=chat_id, text=make_message(message, 'question_'))
+        elif state == '3':
+            min_price, max_price = message.text.replace(' ', '').split('-')
+            redis_db.hset(chat_id, mapping={
+                'min_price': min_price,
+                'max_price': max_price
+            })
+            logger.info(f'set min_price={min_price}, max_price={max_price}')
+            redis_db.hincrby(chat_id, 'state', 1)
+            bot.send_message(chat_id=chat_id, text=make_message(message, 'question_'))
+        elif state == '4':
+            min_price = message.text.strip()
+            redis_db.hset(chat_id, 'min_price', min_price)
+            logger.info(f'set min_price={min_price}')
+            bot.send_message(chat_id=chat_id,
+                             text=make_message(message, 'question_'))
         elif state == '5':
             number_of_hotels = message.text.strip()
             redis_db.hset(chat_id, 'number_of_hotels', number_of_hotels)
@@ -210,7 +217,7 @@ def search_hotels(message: Message):
             bot.send_message(chat_id=chat_id, text=phrase(key='hotels_not_found'))
         else:
             for hotel in hotels:
-                text = f"Название отеля: {hotel['name']}\nРасстояние до центра: {hotel['distance_from_centre']}\nЦена за сутки: {hotel['price_per_night']}\n" \
+                text = f"Название отеля: {hotel['name']}\nРасстояние до центра: {hotel['distance_from_centre']}\nЦена за сутки: ${hotel['price_per_night']}\n" \
                        f"Общая сумма: {hotel['total_price']}\nURL адрес отеля: {hotel['url']}"
                 msg = bot.send_message(message.from_user.id, text)
                 photos = []

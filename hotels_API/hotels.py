@@ -20,9 +20,11 @@ def get_hotels(message: Message, parameters: dict) -> [dict, None]:
     day_out, month_out, year_out = sep_date(parameters['date_out'])
     hotels_amount = int(parameters['number_of_hotels'])
     images_amount = int(parameters['number_of_photo'])
-    min_price, max_price = 1, 2000
-    if parameters['order'] not in ['PRICE_LOW_TO_HIGH', 'RECOMMENDED']:
+    min_price, max_price = 1, 3000
+    if parameters['order'] == 'DISTANCE':
         min_price, max_price = int(parameters['min_price']), int(parameters['max_price'])
+    elif parameters['order'] == 'RECOMMENDED':
+        min_price = int(parameters['min_price'])
 
     payload = {
         "currency": "USD",
@@ -68,19 +70,17 @@ def get_hotels(message: Message, parameters: dict) -> [dict, None]:
             'name': i_hotel['name'],
             'distance_from_centre':
                 i_hotel['destinationInfo']['distanceFromDestination']['value'],
-            'price_per_night': i_hotel['price']['lead']['formatted'],
+            'price_per_night': round(i_hotel['price']['lead']['amount'], 2),
             'total_price':
                 i_hotel['price']['displayMessages'][1]['lineItems'][0][
                     'value'].replace('total', ''),
             'url': 'https://www.hotels.com/h{}.Hotel-Information'.format(
                 i_hotel['id']),
-            # 'images': get_images(hotel_id=i_hotel['id'], images_amount=images_amount)
-
         }
         all_hotels_lst.append(hotel)
 
     if sort_hotels == 'RECOMMENDED':
-        all_hotels_lst.sort(key=lambda elem: float(elem['price_per_night'][1:].replace(',', '.')), reverse=True)
+        all_hotels_lst.sort(key=lambda elem: float(elem['price_per_night']), reverse=True)
     hotels_lst = all_hotels_lst[:hotels_amount]
     for hotel in hotels_lst:
         # данный цикл для уменьшения количества запросов к серверу
