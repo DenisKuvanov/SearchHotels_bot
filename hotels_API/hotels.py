@@ -1,7 +1,7 @@
 import requests
-from typing import List, Dict, Tuple
+from typing import List, Tuple
 from telebot.types import Message
-from loguru import logger
+import time
 
 X_RAPIDAPI_KEY = "e32598b809mshaacc28f4e9bf7ccp19a25ejsn955e64105d2e"
 
@@ -84,6 +84,7 @@ def get_hotels(message: Message, parameters: dict) -> [dict, None]:
     hotels_lst = all_hotels_lst[:hotels_amount]
     for hotel in hotels_lst:
         # данный цикл для уменьшения количества запросов к серверу
+        time.sleep(0.4)
         hotel['images'] = get_images(hotel_id=hotel['id'], images_amount=images_amount)
 
     return hotels_lst

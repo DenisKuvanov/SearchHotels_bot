@@ -1,11 +1,13 @@
 import telebot
 from telebot.types import Message, CallbackQuery, InputMediaPhoto
 from loguru import logger
+from redis_db import redis_db
+
 from utils.instruments import is_user_in_db, logger_config, add_user, phrase, \
-    make_message, is_input_correct
+    make_message, is_input_correct, add_command_history, add_hotels_in_history, \
+    make_history_message
 from hotels_API.locations import search_city, get_name_location
 from hotels_API.hotels import get_hotels
-from redis_db import redis_db
 
 
 logger.configure(**logger_config)
@@ -48,23 +50,31 @@ def get_commands(message: Message) -> None:
     if 'lowprice' in message.text:
         redis_db.hset(user_chat_id, 'order', 'PRICE_LOW_TO_HIGH')
         logger.info('"lowprice" command is called')
+        add_command_history(message=message, command='lowprice')
     elif '/highprice' in message.text:
         redis_db.hset(user_chat_id, 'order', 'RECOMMENDED')
         logger.info('"highprice" command is called')
+        add_command_history(message=message, command='highprice')
     elif '/bestdeal' in message.text:
         redis_db.hset(user_chat_id, 'order', 'DISTANCE')
         logger.info('"bestdeal" command is called')
+        add_command_history(message=message, command='bestdeal')
     else:
-        bot.send_message(chat_id=message.chat.id,
-                         text='Команда history пока в разработке')
-        #дорабоать
-        # set_user_info(key='order', value='HISTORY', message=message)
-        # logger.info('"history" command is called')
+        redis_db.hset(user_chat_id, 'order', 'HISTORY')
+        logger.info('"HISTORY" command is called')
+        redis_db.hset(user_chat_id, 'state', 0)
+        history = redis_db.lrange('u_' + str(user_chat_id), 0, 9)
+        if not history:
+            bot.send_message(chat_id=user_chat_id, text='В данный момент история запросов пуста')
+        for elem in history:
+            text = make_history_message(elem)
+            bot.send_message(chat_id=user_chat_id, text=text)
 
     logger.info(redis_db.hget(user_chat_id, 'order'))
     state = redis_db.hget(user_chat_id, 'state')
     logger.info(f"Current state: {state}")
-    bot.send_message(chat_id=message.chat.id, text=make_message(message, 'question_'))
+    if not redis_db.hget(user_chat_id, 'order') == "HISTORY":
+        bot.send_message(chat_id=message.chat.id, text=make_message(message, 'question_'))
 
 
 @bot.message_handler(content_types=['text'])
@@ -212,6 +222,7 @@ def search_hotels(message: Message):
     try:
         hotels = get_hotels(message=message, parameters=parameters)
         logger.info(f'Function {get_hotels.__name__} returned: {hotels}')
+        add_hotels_in_history(message=message, all_hotels_lst=hotels)
         bot.delete_message(chat_id=chat_id, message_id=wait_msg.id)
         if not hotels or len(hotels) < 1:
             bot.send_message(chat_id=chat_id, text=phrase(key='hotels_not_found'))
@@ -219,7 +230,7 @@ def search_hotels(message: Message):
             for hotel in hotels:
                 text = f"Название отеля: {hotel['name']}\nРасстояние до центра: {hotel['distance_from_centre']}\nЦена за сутки: ${hotel['price_per_night']}\n" \
                        f"Общая сумма: {hotel['total_price']}\nURL адрес отеля: {hotel['url']}"
-                msg = bot.send_message(message.from_user.id, text)
+                bot.send_message(message.from_user.id, text)
                 photos = []
                 for photo in hotel['images']:
                     photos.append(InputMediaPhoto(photo))
