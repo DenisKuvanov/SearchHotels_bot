@@ -14,6 +14,16 @@ logger.configure(**logger_config)
 TOKEN = '5813738796:AAHv8WA1vSu6M2cf7q9PgLOw9nlWqUSoaDE'
 bot = telebot.TeleBot(token=TOKEN, parse_mode='HTML')
 
+# Добавляем кнопку меню с командами бота
+commands = []
+commands.append(telebot.types.BotCommand('/start', 'запустить бота'))
+commands.append(telebot.types.BotCommand('/help', 'список всех команд'))
+commands.append(telebot.types.BotCommand('/lowprice', 'топ дешёвых отелей в городе'))
+commands.append(telebot.types.BotCommand('/highprice', 'топ дорогих отелей в городе'))
+commands.append(telebot.types.BotCommand('/bestdeal', 'лучшие предложения по цене и расположению'))
+commands.append(telebot.types.BotCommand('/history', 'история поиска отелей'))
+bot.set_my_commands(commands=commands)
+
 
 @bot.message_handler(commands=['help', 'start'])
 def start_help(message: Message) -> None:
@@ -23,7 +33,6 @@ def start_help(message: Message) -> None:
     :param message: Message
     :return: None
     """
-
     if not is_user_in_db(message):
         add_user(message)
     if 'start' in message.text:
@@ -238,7 +247,6 @@ def search_hotels(message: Message):
                     bot.send_media_group(chat_id=message.from_user.id, media=photos)
     except Exception as ex:
         bot.send_message(chat_id=chat_id, text='Ошибка сервера. Повторите запрос позже')
-        print(ex)
 
 
 
