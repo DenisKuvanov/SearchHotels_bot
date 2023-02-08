@@ -1,6 +1,6 @@
 import telebot
 from telebot.types import Message, CallbackQuery, InputMediaPhoto
-from redis_db import redis_db
+from redis_db import user_state_db, user_history_db
 from requests.exceptions import RequestException
 
 from utils.instruments import is_user_in_db, add_user, phrase, \
@@ -55,34 +55,34 @@ def get_commands(message: Message) -> None:
     if not is_user_in_db(message=message):
         add_user(message=message)
     user_chat_id = message.chat.id
-    redis_db.hset(user_chat_id, 'state', 1)
+    user_state_db.hset(user_chat_id, 'state', 1)
     if 'lowprice' in message.text:
-        redis_db.hset(user_chat_id, 'order', 'PRICE_LOW_TO_HIGH')
+        user_state_db.hset(user_chat_id, 'order', 'PRICE_LOW_TO_HIGH')
         logger.info('"lowprice" command is called')
         add_command_history(message=message, command='lowprice')
     elif '/highprice' in message.text:
-        redis_db.hset(user_chat_id, 'order', 'RECOMMENDED')
+        user_state_db.hset(user_chat_id, 'order', 'RECOMMENDED')
         logger.info('"highprice" command is called')
         add_command_history(message=message, command='highprice')
     elif '/bestdeal' in message.text:
-        redis_db.hset(user_chat_id, 'order', 'DISTANCE')
+        user_state_db.hset(user_chat_id, 'order', 'DISTANCE')
         logger.info('"bestdeal" command is called')
         add_command_history(message=message, command='bestdeal')
-    else:
-        redis_db.hset(user_chat_id, 'order', 'HISTORY')
+    elif '/history' in message.text:
+        user_state_db.hset(user_chat_id, 'order', 'HISTORY')
         logger.info('"HISTORY" command is called')
-        redis_db.hset(user_chat_id, 'state', 0)
-        history = redis_db.lrange('u_' + str(user_chat_id), 0, 9)
+        user_state_db.hset(user_chat_id, 'state', 0)
+        history = user_history_db.lrange(str(user_chat_id), 0, 9)
         if not history:
             bot.send_message(chat_id=user_chat_id, text='В данный момент история запросов пуста')
         for elem in history:
             text = make_history_message(elem)
             bot.send_message(chat_id=user_chat_id, text=text)
 
-    logger.info(redis_db.hget(user_chat_id, 'order'))
-    state = redis_db.hget(user_chat_id, 'state')
+    logger.info(user_state_db.hget(user_chat_id, 'order'))
+    state = user_state_db.hget(user_chat_id, 'state')
     logger.info(f"Current state: {state}")
-    if not redis_db.hget(user_chat_id, 'order') == "HISTORY":
+    if not user_state_db.hget(user_chat_id, 'order') == "HISTORY":
         bot.send_message(chat_id=message.chat.id, text=make_message(message, 'question_'))
 
 
@@ -95,7 +95,7 @@ def get_text_message(message: Message) -> None:
     """
     if not is_user_in_db(message=message):
         add_user(message=message)
-    state = redis_db.hget(message.chat.id, 'state')
+    state = user_state_db.hget(message.chat.id, 'state')
     if state == '1':
         get_location(message)
     elif state in ['2', '3', '4', '5', '6']:
@@ -146,12 +146,12 @@ def callback_worker(call: CallbackQuery) -> None:
     bot.edit_message_reply_markup(chat_id=chat_id, message_id=call.message.message_id)
 
     if call.data.startswith('code'):
-        if redis_db.hget(chat_id, 'state') != '1':
+        if user_state_db.hget(chat_id, 'state') != '1':
             bot.send_message(call.message.chat.id, text=phrase('enter_command'))
-            redis_db.hset(chat_id, 'state', 0)
+            user_state_db.hset(chat_id, 'state', 0)
         else:
             city_name = get_name_location(call.message.json, call.data)
-            redis_db.hset(chat_id, mapping={
+            user_state_db.hset(chat_id, mapping={
                 'destination_id': call.data[4:],
                 'destination_name': city_name
             })
@@ -160,12 +160,12 @@ def callback_worker(call: CallbackQuery) -> None:
                 chat_id=chat_id,
                 text=f'{phrase(key="loc_selected")}: <b>{city_name}</b>'
             )
-            redis_db.hincrby(chat_id, 'state', 1)
+            user_state_db.hincrby(chat_id, 'state', 1)
             bot.send_message(chat_id=chat_id, text=make_message(call.message, 'question_'))
 
     if call.data == 'cancel':
         logger.info(f'Canceled by user')
-        redis_db.hset(chat_id, 'state', 0)
+        user_state_db.hset(chat_id, 'state', 0)
         bot.send_message(chat_id, 'Отменено')
 
 
@@ -177,46 +177,46 @@ def get_search_parameters(message: Message) -> None:
     """
     logger.info(f'Function {get_search_parameters.__name__} called with argument: {message}')
     chat_id = message.chat.id
-    state = redis_db.hget(chat_id, 'state')
+    state = user_state_db.hget(chat_id, 'state')
     if not is_input_correct(message=message):
         bot.send_message(chat_id=chat_id, text=make_message(message, 'mistake_'))
     else:
-        redis_db.hincrby(chat_id, 'state', 1)
+        user_state_db.hincrby(chat_id, 'state', 1)
         if state == '2':
             date_in, date_out = message.text.replace(' ', '').split('-')
-            redis_db.hset(chat_id, mapping={
+            user_state_db.hset(chat_id, mapping={
                 'date_in': date_in,
                 'date_out': date_out
             })
             logger.info(f'set date_in={date_in}, date_out={date_out}')
-            if redis_db.hget(chat_id, 'order') == 'PRICE_LOW_TO_HIGH':
-                redis_db.hincrby(chat_id, 'state', 2)
-            elif redis_db.hget(chat_id, 'order') == 'RECOMMENDED':
-                redis_db.hincrby(chat_id, 'state', 1)
+            if user_state_db.hget(chat_id, 'order') == 'PRICE_LOW_TO_HIGH':
+                user_state_db.hincrby(chat_id, 'state', 2)
+            elif user_state_db.hget(chat_id, 'order') == 'RECOMMENDED':
+                user_state_db.hincrby(chat_id, 'state', 1)
             bot.send_message(chat_id=chat_id, text=make_message(message, 'question_'))
         elif state == '3':
             min_price, max_price = message.text.replace(' ', '').split('-')
-            redis_db.hset(chat_id, mapping={
+            user_state_db.hset(chat_id, mapping={
                 'min_price': min_price,
                 'max_price': max_price
             })
             logger.info(f'set min_price={min_price}, max_price={max_price}')
-            redis_db.hincrby(chat_id, 'state', 1)
+            user_state_db.hincrby(chat_id, 'state', 1)
             bot.send_message(chat_id=chat_id, text=make_message(message, 'question_'))
         elif state == '4':
             min_price = message.text.strip()
-            redis_db.hset(chat_id, 'min_price', min_price)
+            user_state_db.hset(chat_id, 'min_price', min_price)
             logger.info(f'set min_price={min_price}')
             bot.send_message(chat_id=chat_id,
                              text=make_message(message, 'question_'))
         elif state == '5':
             number_of_hotels = message.text.strip()
-            redis_db.hset(chat_id, 'number_of_hotels', number_of_hotels)
+            user_state_db.hset(chat_id, 'number_of_hotels', number_of_hotels)
             logger.info(f'set number_of_hotels={number_of_hotels}')
             bot.send_message(chat_id=chat_id, text=make_message(message, 'question_'))
         elif state == '6':
             number_of_photo = message.text.strip()
-            redis_db.hset(chat_id, mapping={
+            user_state_db.hset(chat_id, mapping={
                 'number_of_photo': number_of_photo,
                 'state': 0
             })
@@ -227,7 +227,7 @@ def get_search_parameters(message: Message) -> None:
 def search_hotels(message: Message):
     chat_id = message.chat.id
     wait_msg = bot.send_message(chat_id=message.chat.id, text=phrase('wait'))
-    parameters = redis_db.hgetall(message.chat.id)
+    parameters = user_state_db.hgetall(message.chat.id)
     try:
         hotels = get_hotels(message=message, parameters=parameters)
         logger.info(f'Function {get_hotels.__name__} returned: {hotels}')

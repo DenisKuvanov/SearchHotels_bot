@@ -5,7 +5,7 @@ from typing import List
 
 from telebot.types import Message
 from utils.logger_settings import logger
-from redis_db import redis_db
+from redis_db import user_state_db, user_history_db
 
 from utils.bot_messages import vocabulary
 
@@ -41,8 +41,8 @@ def add_user(message: Message) -> None:
     """
     logger.info(f'function "{add_user.__name__}" called')
     user_chat_id = str(message.chat.id)
-    redis_db.hset(user_chat_id, 'state', 0)
-    redis_db.hset(user_chat_id, 'username', message.chat.username)
+    user_state_db.hset(user_chat_id, 'state', 0)
+    user_state_db.hset(user_chat_id, 'username', message.chat.username)
 
 
 def is_input_correct(message: Message) -> bool:
@@ -52,7 +52,7 @@ def is_input_correct(message: Message) -> bool:
     :return: True, если параметр введён корректно
     """
     chat_id = message.chat.id
-    state = redis_db.hget(chat_id, 'state')
+    state = user_state_db.hget(chat_id, 'state')
     msg = message.text.strip()
     logger.info(f'function {is_input_correct.__name__} called')
     if state == '6' and msg.strip().isdigit() and 0 <= int(msg.strip()) <= 10:
@@ -116,7 +116,7 @@ def is_user_in_db(message: Message) -> bool:
     """
     logger.info(f'function "{is_user_in_db.__name__}" called')
     user_chat_id = str(message.chat.id)
-    if redis_db.hget(user_chat_id, 'state'):
+    if user_state_db.hget(user_chat_id, 'state'):
         return True
     return False
 
@@ -129,7 +129,7 @@ def make_message(message: Message, prefix: str) -> str:
     :param prefix: префикс для поиска нужного сообщения в словаре
     :return: str
     """
-    state = redis_db.hget(message.chat.id, 'state')
+    state = user_state_db.hget(message.chat.id, 'state')
     msg = phrase(prefix + state)
 
     return msg
@@ -144,10 +144,10 @@ def add_command_history(message: Message, command: str) -> None:
     """
     logger.info(f'function "{add_command_history.__name__}" called')
     user_chat_id = str(message.chat.id)
-    if redis_db.llen('u_' + user_chat_id) >= 10:
-        redis_db.lpop('u_' + user_chat_id)
-    redis_db.rpush('u_' + user_chat_id,
-                   json.dumps({
+    if user_history_db.llen(user_chat_id) >= 10:
+        user_history_db.lpop(user_chat_id)
+    user_history_db.rpush(user_chat_id,
+                        json.dumps({
                        'command': command,
                        'date': datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d %H:%M:%S'),
                        'destination_name': '',
@@ -164,11 +164,11 @@ def add_hotels_in_history(message: Message, all_hotels_lst: List) -> None:
     """
     logger.info(f'function "{add_hotels_in_history.__name__}" called')
     user_chat_id = str(message.chat.id)
-    last_elem = json.loads(redis_db.rpop('u_' + user_chat_id))
-    last_elem['destination_name'] = redis_db.hget(user_chat_id, 'destination_name')
+    last_elem = json.loads(user_history_db.rpop(user_chat_id))
+    last_elem['destination_name'] = user_state_db.hget(user_chat_id, 'destination_name')
     hotels_lst = [hotel_name['name'] for hotel_name in all_hotels_lst]
     last_elem['hotels_lst'] = hotels_lst
-    redis_db.rpush('u_' + user_chat_id, json.dumps(last_elem))
+    user_history_db.rpush(user_chat_id, json.dumps(last_elem))
 
 
 def make_history_message(elem: bytes) -> str:
