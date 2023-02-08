@@ -1,7 +1,7 @@
 import requests
-from typing import List, Dict
+from typing import Dict
 from telebot.types import Message
-from loguru import logger
+from utils.logger_settings import logger
 
 X_RAPIDAPI_KEY = "e32598b809mshaacc28f4e9bf7ccp19a25ejsn955e64105d2e"
 

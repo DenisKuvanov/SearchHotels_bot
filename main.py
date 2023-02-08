@@ -1,16 +1,16 @@
 import telebot
 from telebot.types import Message, CallbackQuery, InputMediaPhoto
-from loguru import logger
 from redis_db import redis_db
+from requests.exceptions import RequestException
 
-from utils.instruments import is_user_in_db, logger_config, add_user, phrase, \
+from utils.instruments import is_user_in_db, add_user, phrase, \
     make_message, is_input_correct, add_command_history, add_hotels_in_history, \
     make_history_message
+from utils.logger_settings import logger
 from hotels_API.locations import search_city, get_name_location
 from hotels_API.hotels import get_hotels
 
 
-logger.configure(**logger_config)
 TOKEN = '5813738796:AAHv8WA1vSu6M2cf7q9PgLOw9nlWqUSoaDE'
 bot = telebot.TeleBot(token=TOKEN, parse_mode='HTML')
 
@@ -245,8 +245,9 @@ def search_hotels(message: Message):
                     photos.append(InputMediaPhoto(photo))
                 if photos:
                     bot.send_media_group(chat_id=message.from_user.id, media=photos)
-    except Exception as ex:
-        bot.send_message(chat_id=chat_id, text='Ошибка сервера. Повторите запрос позже')
+    except RequestException as ex:
+        logger.error(f'Server error: {ex}')
+        bot.send_message(chat_id=chat_id, text=phrase(key='hotels_not_found'))
 
 
 

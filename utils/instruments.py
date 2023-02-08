@@ -4,7 +4,7 @@ import json
 from typing import List
 
 from telebot.types import Message
-from loguru import logger
+from utils.logger_settings import logger
 from redis_db import redis_db
 
 from utils.bot_messages import vocabulary

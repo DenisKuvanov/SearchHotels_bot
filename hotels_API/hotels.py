@@ -63,6 +63,10 @@ def get_hotels(message: Message, parameters: dict) -> [dict, None]:
     }
 
     response = requests.post(url, json=payload, headers=headers).json()
+
+    if response.get('errors'):
+        raise requests.exceptions.RequestException('По данному запросов результатов не найдено')
+
     all_hotels_lst = []
     for i_hotel in response['data']['propertySearch']['properties']:
         hotel = {
