@@ -1,11 +1,11 @@
 import datetime
-from os import path
 import re
 import json
+from typing import List
 
 from telebot.types import Message
-from loguru import logger
-from redis_db import redis_db
+from utils.logger_settings import logger
+from redis_db import user_state_db, user_history_db
 
 from utils.bot_messages import vocabulary
 
@@ -32,8 +32,6 @@ logger_config = {
     ],
 }
 
-path_to_database = path.join(path.abspath(''), 'database', 'users_db.json')
-
 
 def add_user(message: Message) -> None:
     """
@@ -43,8 +41,8 @@ def add_user(message: Message) -> None:
     """
     logger.info(f'function "{add_user.__name__}" called')
     user_chat_id = str(message.chat.id)
-    redis_db.hset(user_chat_id, 'state', 0)
-    redis_db.hset(user_chat_id, 'username', message.chat.username)
+    user_state_db.hset(user_chat_id, 'state', 0)
+    user_state_db.hset(user_chat_id, 'username', message.chat.username)
 
 
 def is_input_correct(message: Message) -> bool:
@@ -54,17 +52,39 @@ def is_input_correct(message: Message) -> bool:
     :return: True, если параметр введён корректно
     """
     chat_id = message.chat.id
-    state = redis_db.hget(chat_id, 'state')
+    state = user_state_db.hget(chat_id, 'state')
     msg = message.text.strip()
     logger.info(f'function {is_input_correct.__name__} called')
     if state == '6' and msg.strip().isdigit() and 0 <= int(msg.strip()) <= 10:
         return True
     elif state == '5' and msg.strip().isdigit() and 0 < int(msg.strip()) <= 10:
         return True
+    elif state == '4' and msg.strip().isdigit() and int(msg.strip()) > 0:
+        return True
+    elif state == '3' and is_price_correct(msg):
+        return True
     elif state == '2' and is_date_correct(msg):
         return True
     elif state == '1' and msg.replace(' ', '').replace('-', '').isalpha():
         return True
+
+
+def is_price_correct(price: str) -> bool:
+    """
+    Проверяет корректность введёной максимальной и минимальной суммы
+    :param price:
+    :return: bool
+    """
+    if not price.replace(' ', '').replace('-', '').isdigit():
+        return False
+    if '-' not in price:
+        return False
+    min_price, max_price = list(map(lambda elem: int(elem), price.replace(' ', '').split('-')))
+    if min_price < 1 or max_price < 1:
+        return False
+    if min_price >= max_price:
+        return False
+    return True
 
 
 def is_date_correct(date: str) -> bool:
@@ -96,57 +116,9 @@ def is_user_in_db(message: Message) -> bool:
     """
     logger.info(f'function "{is_user_in_db.__name__}" called')
     user_chat_id = str(message.chat.id)
-    if redis_db.hget(user_chat_id, 'state'):
+    if user_state_db.hget(user_chat_id, 'state'):
         return True
     return False
-
-
-# def get_user_info(message: Message, key: str = None, all: bool = None) -> str:
-#     """
-#     Возвращает  информацию о пользователе из базы данных по ключу key
-#     :param all: bool
-#     :param key: str
-#     :param message: Message
-#     :return: str
-#     """
-#     logger.info(f'function "{is_user_in_db.__name__}" called with parameter {key}')
-#     if not is_user_in_db(message):
-#         add_user(message)
-#     user_chat_id = str(message.chat.id)
-#     try:
-#         with open(path_to_database, 'r', encoding='utf-8') as db:
-#             datebase = json.load(db)
-#             if all:
-#                 return datebase[user_chat_id]
-#             else:
-#                 return datebase[user_chat_id][key]
-#     except Exception as ex:
-#         if key == 'state':
-#             return '0'
-#         elif key == 'order':
-#             return ''
-
-
-# def set_user_info(key:str, value: str, message: Message, increase: bool = False) -> None:
-#     """
-#     Устанавливает для пользователя переданное значение состояния
-#     :param key: str
-#     :param value: str
-#     :param message: Message
-#     :return: None
-#     """
-#     logger.info(f'function "{is_user_in_db.__name__}"called with parameter {key}')
-#     if not is_user_in_db(message):
-#         add_user(message)
-#     user_chat_id = str(message.chat.id)
-#     with open(path_to_database, 'r', encoding='utf-8') as db:
-#         datebase = json.load(db)
-#     if increase and key=='state':
-#         datebase[user_chat_id][key] = str(int(datebase[user_chat_id][key]) + int(value))
-#     else:
-#         datebase[user_chat_id][key] = value
-#     with open(path_to_database, 'w', encoding='utf-8') as db:
-#         json.dump(datebase, db, indent=4, ensure_ascii=False)
 
 
 def make_message(message: Message, prefix: str) -> str:
@@ -157,11 +129,63 @@ def make_message(message: Message, prefix: str) -> str:
     :param prefix: префикс для поиска нужного сообщения в словаре
     :return: str
     """
-    state = redis_db.hget(message.chat.id, 'state')
+    state = user_state_db.hget(message.chat.id, 'state')
     msg = phrase(prefix + state)
 
     return msg
 
+
+def add_command_history(message: Message, command: str) -> None:
+    """
+    Добавляет в историю поиска введённую пользователем команду и дату её ввода
+    :param message: Message
+    :param command: команда, введённая пользователем
+    :return: None
+    """
+    logger.info(f'function "{add_command_history.__name__}" called')
+    user_chat_id = str(message.chat.id)
+    if user_history_db.llen(user_chat_id) >= 10:
+        user_history_db.lpop(user_chat_id)
+    user_history_db.rpush(user_chat_id,
+                        json.dumps({
+                       'command': command,
+                       'date': datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d %H:%M:%S'),
+                       'destination_name': '',
+                       'hotels_lst': []
+                   }))
+
+
+def add_hotels_in_history(message: Message, all_hotels_lst: List) -> None:
+    """
+    Добавляет список найденных отелей в историю поиска пользователя
+    :param message: Message
+    :param all_hotels_lst: список найденныйх отелей
+    :return: None
+    """
+    logger.info(f'function "{add_hotels_in_history.__name__}" called')
+    user_chat_id = str(message.chat.id)
+    last_elem = json.loads(user_history_db.rpop(user_chat_id))
+    last_elem['destination_name'] = user_state_db.hget(user_chat_id, 'destination_name')
+    hotels_lst = [hotel_name['name'] for hotel_name in all_hotels_lst]
+    last_elem['hotels_lst'] = hotels_lst
+    user_history_db.rpush(user_chat_id, json.dumps(last_elem))
+
+
+def make_history_message(elem: bytes) -> str:
+    """
+    Формирует сообщение, содержащие историю запросов пользователя
+    :param elem:
+    :return:
+    """
+    elem_history = json.loads(elem)
+    hotels_name = ''
+    for hotel in elem_history['hotels_lst']:
+        hotels_name += '\n- ' + hotel
+    text = f"Введённая команда: <b>{elem_history['command']}</b>\nВведённый " \
+           f"город: <b>{elem_history['destination_name']}</b>\nДата вво" \
+           f"да: <b>{elem_history['date']}</b>\nНайденные отели: <b>" \
+           f"{hotels_name}</b> "
+    return text
 
 
 def phrase(key: str) -> str:
