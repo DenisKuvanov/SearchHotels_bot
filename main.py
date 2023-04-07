@@ -1,7 +1,10 @@
+import os
+
 import telebot
 from telebot.types import Message, CallbackQuery, InputMediaPhoto
 from redis_db import user_state_db, user_history_db
 from requests.exceptions import RequestException
+from dotenv import load_dotenv
 
 from utils.instruments import is_user_in_db, add_user, phrase, \
     make_message, is_input_correct, add_command_history, add_hotels_in_history, \
@@ -10,8 +13,8 @@ from utils.logger_settings import logger
 from hotels_API.locations import search_city, get_name_location
 from hotels_API.hotels import get_hotels
 
-
-TOKEN = '5813738796:AAHv8WA1vSu6M2cf7q9PgLOw9nlWqUSoaDE'
+load_dotenv()
+TOKEN = os.getenv('TOKEN')
 bot = telebot.TeleBot(token=TOKEN, parse_mode='HTML')
 
 # Добавляем кнопку меню с командами бота
